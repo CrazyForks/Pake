@@ -1,56 +1,116 @@
 import path from 'path';
-import fsExtra from "fs-extra";
+import fsExtra from 'fs-extra';
+import chalk from 'chalk';
 import prompts from 'prompts';
 
+import { PakeAppOptions } from '@/types';
+import { checkRustInstalled, installRust } from '@/helpers/rust';
+import { mergeConfig } from '@/helpers/merge';
+import tauriConfig from '@/helpers/tauriConfig';
+import { npmDirectory } from '@/utils/dir';
+import { getSpinner } from '@/utils/info';
 import { shellExec } from '@/utils/shell';
 import { isChinaDomain } from '@/utils/ip';
+import { IS_MAC } from '@/utils/platform';
 import logger from '@/options/logger';
-import { checkRustInstalled, installRust } from '@/helpers/rust';
-import { PakeAppOptions } from '@/types';
-import { IS_MAC } from "@/utils/platform";
 
 export default abstract class BaseBuilder {
-  abstract build(url: string, options: PakeAppOptions): Promise<void>;
+  protected options: PakeAppOptions;
+
+  protected constructor(options: PakeAppOptions) {
+    this.options = options;
+  }
 
   async prepare() {
+    const tauriSrcPath = path.join(npmDirectory, 'src-tauri');
+    const tauriTargetPath = path.join(tauriSrcPath, 'target');
+    const tauriTargetPathExists = await fsExtra.pathExists(tauriTargetPath);
 
-    // Windows and Linux need to install necessary build tools.
-    if (!IS_MAC) {
-      logger.info('Install Rust and required build tools to build the app.');
-      logger.info('See more in https://tauri.app/v1/guides/getting-started/prerequisites#installing.');
+    if (!IS_MAC && !tauriTargetPathExists) {
+      logger.warn('✼ The first use requires installing system dependencies.');
+      logger.warn('✼ See more in https://tauri.app/v1/guides/getting-started/prerequisites.');
     }
 
-    if (checkRustInstalled()) {
-      return;
+    if (!checkRustInstalled()) {
+      const res = await prompts({
+        type: 'confirm',
+        message: 'Rust not detected. Install now?',
+        name: 'value',
+      });
+
+      if (res.value) {
+        await installRust();
+      } else {
+        logger.error('✕ Rust required to package your webapp.');
+        process.exit(0);
+      }
     }
 
-    const res = await prompts({
-      type: 'confirm',
-      message: 'Rust not detected. Install now?',
-      name: 'value',
-    });
+    const isChina = await isChinaDomain('www.npmjs.com');
+    const spinner = getSpinner('Installing package...');
+    const rustProjectDir = path.join(tauriSrcPath, '.cargo');
+    const projectConf = path.join(rustProjectDir, 'config');
+    await fsExtra.ensureDir(rustProjectDir);
 
-    if (res.value) {
-      await installRust();
+    if (isChina) {
+      logger.info('✺ Located in China, using npm/rsProxy CN mirror.');
+      const projectCnConf = path.join(tauriSrcPath, 'rust_proxy.toml');
+      await fsExtra.copy(projectCnConf, projectConf);
+      await shellExec(`cd "${npmDirectory}" && npm install --registry=https://registry.npmmirror.com`);
     } else {
-      logger.error('Error: Rust required to package your webapp!');
-      process.exit(2);
+      await shellExec(`cd "${npmDirectory}" && npm install`);
+    }
+    spinner.succeed(chalk.green('Package installed!'));
+    if (!tauriTargetPathExists) {
+      logger.warn('✼ The first packaging may be slow, please be patient and wait, it will be faster afterwards.');
     }
   }
 
-  protected async runBuildCommand(directory: string, command: string) {
-    const isChina = await isChinaDomain("www.npmjs.com");
-    if (isChina) {
-      logger.info("Located in China, using npm/Rust CN mirror.");
-      const rustProjectDir = path.join(directory, 'src-tauri', ".cargo");
-      await fsExtra.ensureDir(rustProjectDir);
-      const projectCnConf = path.join(directory, "src-tauri", "rust_proxy.toml");
-      const projectConf = path.join(rustProjectDir, "config");
-      await fsExtra.copy(projectCnConf, projectConf);
 
-      await shellExec(`cd "${directory}" && npm install --registry=https://registry.npmmirror.com && ${command}`);
-    } else {
-      await shellExec(`cd "${directory}" && npm install && ${command}`);
-    }
+  async build(url: string) {
+    await this.buildAndCopy(url, this.options.targets);
+  }
+
+  async start(url: string) {
+    await mergeConfig(url, this.options, tauriConfig);
+  } 
+
+  async buildAndCopy(url: string, target: string) {
+    const { name } = this.options;
+    await mergeConfig(url, this.options, tauriConfig);
+
+    // Build app
+    const spinner = getSpinner('Building app...');
+    setTimeout(() => spinner.stop(), 3000);
+    await shellExec(`cd "${npmDirectory}" && ${this.getBuildCommand()}`);
+
+    // Copy app
+    const fileName = this.getFileName();
+    const fileType = this.getFileType(target);
+    const appPath = this.getBuildAppPath(npmDirectory, fileName, fileType);
+    const distPath = path.resolve(`${name}.${fileType}`);
+    await fsExtra.copy(appPath, distPath);
+    await fsExtra.remove(appPath);
+    logger.success('✔ Build success!');
+    logger.success('✔ App installer located in', distPath);
+  }
+
+  protected getFileType(target: string): string {
+    return target;
+  }
+
+  abstract getFileName(): string;
+
+  protected getBuildCommand(): string {
+    // the debug option should support `--debug` and `--release`
+    return this.options.debug ? 'npm run build:debug' : 'npm run build';
+  }
+
+  protected getBasePath(): string {
+    return 'src-tauri/target/release/bundle/';
+  }
+
+  protected getBuildAppPath(npmDirectory: string, fileName: string, fileType: string): string {
+    return path.join(npmDirectory, this.getBasePath(), fileType.toLowerCase(), `${fileName}.${fileType}`);
   }
 }

@@ -1,3 +1,5 @@
+<h4 align="right"><strong><a href="https://github.com/tw93/Pake/tree/master/bin">English</a></strong> | 简体中文</h4>
+
 ## 安装
 
 请确保您的 Node.js 版本为 16 或更高版本（例如 16.8）。请避免使用 `sudo` 进行安装。如果 npm 报告权限问题，请参考 [如何在不使用 sudo 的情况下修复 npm 报错](https://stackoverflow.com/questions/16151018/how-to-fix-npm-throwing-error-without-sudo)。
@@ -9,8 +11,7 @@ npm install pake-cli -g
 ## Windows/Linux 注意事项
 
 - **非常重要**：请参阅 Tauri 的 [依赖项指南](https://tauri.app/v1/guides/getting-started/prerequisites)。
-- 对于 Windows 用户，请确保至少安装了 `Win10 SDK(10.0.19041.0)` 和 `Visual Studio Build Tools 2022（版本 17.2 或更高）`
-  。此外，还需要安装以下组件：
+- 对于 Windows 用户，请确保至少安装了 `Win10 SDK(10.0.19041.0)` 和 `Visual Studio Build Tools 2022（版本 17.2 或更高）`，此外还需要安装以下组件：
 
   1. Microsoft Visual C++ 2015-2022 Redistributable (x64)
   2. Microsoft Visual C++ 2015-2022 Redistributable (x86)
@@ -39,14 +40,14 @@ npm install pake-cli -g
 ## 使用方法
 
 ```bash
-pake url [options]
+pake [url] [options]
 ```
 
 应用程序的打包结果将默认保存在当前工作目录。由于首次打包需要配置环境，这可能需要一些时间，请耐心等待。
 
 > **注意**：打包过程需要使用 `Rust` 环境。如果您没有安装 `Rust`，系统会提示您是否要安装。如果遇到安装失败或超时的问题，您可以 [手动安装](https://www.rust-lang.org/tools/install)。
 
-### url
+### [url]
 
 `url` 是您需要打包的网页链接 🔗 或本地 HTML 文件的路径，此参数为必填。
 
@@ -67,7 +68,7 @@ pake url [options]
 指定应用程序的图标，支持本地或远程文件。默认使用 Pake 的内置图标。您可以访问 [icon-icons](https://icon-icons.com)
 或 [macOSicons](https://macosicons.com/#/) 下载自定义图标。
 
-- MacOS 要求使用 `.icns` 格式。
+- macOS 要求使用 `.icns` 格式。
 - Windows 要求使用 `.ico` 格式。
 - Linux 要求使用 `.png` 格式。
 
@@ -93,18 +94,10 @@ pake url [options]
 
 #### [transparent]
 
-设置是否启用沉浸式头部，默认为 `false`（不启用）。在 MacOS 上推荐启用此选项。
+设置是否启用沉浸式头部，默认为 `false`（不启用）。当前只对 macOS 上有效。
 
 ```shell
 --transparent
-```
-
-#### [resize]
-
-设置应用窗口是否可以调整大小，默认为 `true`（可调整）。使用以下命令可以禁止调整窗口大小。
-
-```shell
---no-resizable
 ```
 
 #### [fullscreen]
@@ -117,7 +110,7 @@ pake url [options]
 
 #### [multi-arch]
 
-设置打包结果同时支持 Intel 和 M1 芯片，仅适用于 MacOS，默认为 `false`。
+设置打包结果同时支持 Intel 和 M1 芯片，仅适用于 macOS，默认为 `false`。
 
 ##### 准备工作
 
@@ -159,7 +152,7 @@ Linux，默认为 `all`。
 
 #### [show-menu]
 
-设置是否显示菜单栏，默认不显示。在 MacOS 上推荐启用此选项。
+设置是否显示菜单栏，默认不显示。在 macOS 上推荐启用此选项。
 
 ```shell
 --show-menu
@@ -181,14 +174,14 @@ Linux，默认为 `all`。
 --system-tray-icon <path>
 ```
 
-#### [copy-iter-file]
+#### [iter-copy-file]
 
 当 `url` 为本地文件路径时，如果启用此选项，则会递归地将 `url` 路径文件所在的文件夹及其所有子文件复
 
 制到 Pake 的静态文件夹。默认不启用。
 
 ```shell
---copy-iter-file
+--iter-copy-file
 ```
 
 ## 结语

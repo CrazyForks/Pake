@@ -1,36 +1,31 @@
-import path from 'path';
-import fsExtra from "fs-extra";
-
-import logger from '@/options/logger';
 import tauriConfig from '@/helpers/tauriConfig';
-import BaseBuilder from './BaseBuilder';
-import { npmDirectory } from '@/utils/dir';
 import { PakeAppOptions } from '@/types';
-import { mergeConfig } from "@/helpers/merge";
+import BaseBuilder from './BaseBuilder';
 
 export default class MacBuilder extends BaseBuilder {
-  async build(url: string, options: PakeAppOptions) {
-    const { name } = options;
-    await mergeConfig(url, options, tauriConfig);
-    let dmgName: string;
-    if (options.multiArch) {
-      await this.runBuildCommand(npmDirectory, 'npm run build:mac');
-      dmgName = `${name}_${tauriConfig.package.version}_universal.dmg`;
-    } else {
-      await this.runBuildCommand(npmDirectory, 'npm run build');
-      let arch = process.arch === "arm64" ? "aarch64" : process.arch;
-      dmgName = `${name}_${tauriConfig.package.version}_${arch}.dmg`;
-    }
-    const appPath = this.getBuildAppPath(npmDirectory, dmgName, options.multiArch);
-    const distPath = path.resolve(`${name}.dmg`);
-    await fsExtra.copy(appPath, distPath);
-    await fsExtra.remove(appPath);
-    logger.success('Build success!');
-    logger.success('App installer located in', distPath);
+  constructor(options: PakeAppOptions) {
+    super(options);
+    this.options.targets = 'dmg';
   }
 
-  getBuildAppPath(npmDirectory: string, dmgName: string, multiArch: boolean) {
-    const dmgPath = multiArch ? 'src-tauri/target/universal-apple-darwin/release/bundle/dmg' : 'src-tauri/target/release/bundle/dmg';
-    return path.join(npmDirectory, dmgPath, dmgName);
+  getFileName(): string {
+    const { name } = this.options;
+    let arch: string;
+    if (this.options.multiArch) {
+      arch = 'universal';
+    } else {
+      arch = process.arch === 'arm64' ? 'aarch64' : process.arch;
+    }
+    return `${name}_${tauriConfig.package.version}_${arch}`;
+  }
+
+  protected getBuildCommand(): string {
+    return this.options.multiArch ? 'npm run build:mac' : super.getBuildCommand();
+  }
+
+  protected getBasePath(): string {
+    return this.options.multiArch
+      ? 'src-tauri/target/universal-apple-darwin/release/bundle'
+      : super.getBasePath();
   }
 }
