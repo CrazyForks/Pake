@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { runInNewContext } from "node:vm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 function createElement(tagName) {
   const element = {
@@ -81,7 +81,7 @@ function createTextNode(value, parent) {
   };
 }
 
-function createDocument(textNodes) {
+function createDocument(textNodes, notifyMutation = () => {}) {
   const listeners = {};
   const body = createElement("body");
   const head = createElement("head");
@@ -114,6 +114,10 @@ function createDocument(textNodes) {
             this.start,
             this.end,
           );
+          notifyMutation({
+            type: "childList",
+            target: this.startContainer.parentNode,
+          });
         },
       };
     },
@@ -171,6 +175,7 @@ function loadFindScript({
   enabled = true,
   userAgent = "Mozilla/5.0",
   nodes = [],
+  observeMutations = false,
 } = {}) {
   const source = fs.readFileSync(
     path.join(process.cwd(), "src-tauri/src/inject/find.js"),
@@ -180,6 +185,17 @@ function loadFindScript({
     path.join(process.cwd(), "src-tauri/src/inject/styles.js"),
     "utf-8",
   );
+  const observers = new Set();
+  const notifyMutation = (record) => {
+    for (const observer of observers) {
+      observer.records.push(record);
+      queueMicrotask(() => {
+        if (observer.records.length) {
+          observer.callback(observer.records.splice(0));
+        }
+      });
+    }
+  };
   const context = {
     console,
     setTimeout,
@@ -199,14 +215,29 @@ function loadFindScript({
         }
       },
     },
-    document: createDocument(nodes),
+    document: createDocument(nodes, notifyMutation),
   };
+  if (observeMutations) {
+    context.MutationObserver = class {
+      constructor(callback) {
+        this.callback = callback;
+        this.records = [];
+      }
+      observe() {
+        observers.add(this);
+      }
+      disconnect() {
+        observers.delete(this);
+        this.records = [];
+      }
+    };
+  }
   context.window.NodeFilter = context.NodeFilter;
   context.window.navigator = context.navigator;
 
   runInNewContext(styleSource, context);
   runInNewContext(source, context);
-  return context;
+  return { ...context, notifyMutation };
 }
 
 describe("Find injection", () => {
@@ -309,5 +340,46 @@ describe("Find injection", () => {
 
     context.window.pakeFind.close();
     expect(context.window.pakeFind.getState().matchCount).toBe(0);
+  });
+
+  it("ignores its own DOM highlights but searches real changes and stops on close", async () => {
+    vi.useFakeTimers();
+    try {
+      const paragraph = createElement("p");
+      const node = createTextNode("Alpha alpha", paragraph);
+      const context = loadFindScript({ nodes: [node], observeMutations: true });
+      const walk = vi.spyOn(context.document, "createTreeWalker");
+      const find = context.window.pakeFind;
+      find.open();
+      find.search("alpha");
+      await vi.advanceTimersByTimeAsync(650);
+      expect(walk).toHaveBeenCalledTimes(1);
+      expect(find.getState().matchCount).toBe(2);
+
+      node.nodeValue = "Alpha alpha alpha";
+      context.notifyMutation({ type: "characterData", target: node });
+      await vi.advanceTimersByTimeAsync(650);
+      expect(walk).toHaveBeenCalledTimes(2);
+      expect(find.getState().matchCount).toBe(3);
+
+      node.nodeValue = "Alpha alpha alpha alpha";
+      context.notifyMutation({ type: "characterData", target: node });
+      find.search("alpha");
+      await vi.advanceTimersByTimeAsync(650);
+      expect(walk).toHaveBeenCalledTimes(3);
+      expect(find.getState().matchCount).toBe(4);
+
+      context.notifyMutation({ type: "characterData", target: node });
+      await Promise.resolve();
+      find.close();
+      node.nodeValue = "Alpha";
+      context.notifyMutation({ type: "characterData", target: node });
+      await vi.advanceTimersByTimeAsync(650);
+      expect(walk).toHaveBeenCalledTimes(3);
+      expect(find.getState().isOpen).toBe(false);
+      expect(find.getState().matchCount).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

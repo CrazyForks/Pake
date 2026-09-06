@@ -527,29 +527,39 @@
   }
 
   function runSearch(query = state.query) {
+    clearTimeout(state.searchTimer);
     state.query = query;
-    clearHighlights();
+    // A full scan includes any pending page edits. Disconnect while replacing
+    // DOM marks so our own mutations cannot schedule another search.
+    stopObservingDocumentChanges();
+    try {
+      clearHighlights();
 
-    if (!query) {
-      state.matches = [];
-      state.activeIndex = -1;
-      state.truncated = false;
+      if (!query) {
+        state.matches = [];
+        state.activeIndex = -1;
+        state.truncated = false;
+        updateCounter();
+        return getState();
+      }
+
+      const result = collectMatches(query);
+      state.matches = result.matches;
+      state.truncated = result.truncated;
+      state.activeIndex = state.matches.length > 0 ? 0 : -1;
+
+      if (!applyCustomHighlights()) {
+        applyDomHighlights();
+      }
+
       updateCounter();
+      scrollActiveIntoView();
       return getState();
+    } finally {
+      if (state.isOpen) {
+        observeDocumentChanges();
+      }
     }
-
-    const result = collectMatches(query);
-    state.matches = result.matches;
-    state.truncated = result.truncated;
-    state.activeIndex = state.matches.length > 0 ? 0 : -1;
-
-    if (!applyCustomHighlights()) {
-      applyDomHighlights();
-    }
-
-    updateCounter();
-    scrollActiveIntoView();
-    return getState();
   }
 
   function debounceSearch(query) {
