@@ -56,6 +56,8 @@ describe('structured process execution', () => {
     );
 
     const result = JSON.parse(await fs.readFile(resultPath, 'utf8'));
+    // Windows may expose the same working directory through its 8.3 alias.
+    result.cwd = await fs.realpath(result.cwd);
     expect(result).toEqual({
       args: values,
       cwd: await fs.realpath(cwd),

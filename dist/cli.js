@@ -448,6 +448,8 @@ async function createBuildWorkspace(sourceDirectory) {
             'package.json',
             'pnpm-lock.yaml',
             'package-lock.json',
+            'rust-toolchain.toml',
+            'rust-toolchain',
         ]) {
             const source = path.join(sourceDirectory, file);
             if (await fsExtra.pathExists(source))
@@ -797,9 +799,13 @@ async function combineFiles(files, output) {
             const fileContent = await fs$1.readFile(file, 'utf-8');
             return `window.addEventListener('DOMContentLoaded', (_event) => {
         const css = ${JSON.stringify(fileContent)};
-        const style = document.createElement('style');
-        style.textContent = css;
-        document.head.appendChild(style);
+        if (typeof window.__PAKE_INJECT_STYLE__ === 'function') {
+          window.__PAKE_INJECT_STYLE__(css);
+        } else {
+          const style = document.createElement('style');
+          style.textContent = css;
+          document.head.appendChild(style);
+        }
       });`;
         }
         const fileContent = await fs$1.readFile(file);
