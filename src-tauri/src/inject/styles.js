@@ -6,12 +6,34 @@
     return;
   }
 
+  function containsImport(css) {
+    // Skip comments, strings and escaped delimiters; decode at-keyword escapes. Import
+    // rules are case-insensitive and need not begin a line. replaceSync silently
+    // drops them, so a blocked sheet containing imports must keep its DOM path.
+    const tokens =
+      /\/\*[\s\S]*?(?:\*\/|$)|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\\(?:[0-9a-f]{1,6}[\t\n\f\r ]?|[^\n\r\f])|@((?:[-\w\u0080-\uffff]|\\(?:[0-9a-f]{1,6}[\t\n\f\r ]?|[^\n\r\f]))+)/gi;
+    for (const token of css.matchAll(tokens)) {
+      if (!token[1]) continue;
+      const keyword = token[1].replace(
+        /\\([0-9a-f]{1,6})[\t\n\f\r ]?|\\([^\n\r\f])/gi,
+        (_escape, hex, character) => {
+          const code = hex ? parseInt(hex, 16) : 0;
+          return hex
+            ? String.fromCodePoint(code > 0 && code <= 0x10ffff ? code : 0xfffd)
+            : character;
+        },
+      );
+      if (keyword.toLowerCase() === "import") return true;
+    }
+    return false;
+  }
+
   function injectWithAdoptedStyleSheet(css, id) {
     try {
       if (
         typeof window.CSSStyleSheet !== "function" ||
         !("adoptedStyleSheets" in document) ||
-        /^\s*@import\b/m.test(css)
+        containsImport(css)
       ) {
         return null;
       }
@@ -54,11 +76,6 @@
       }
     }
 
-    const sheet = injectWithAdoptedStyleSheet(css, id);
-    if (sheet) {
-      return sheet;
-    }
-
     const style = document.createElement("style");
     if (id) {
       style.id = id;
@@ -67,6 +84,17 @@
     (document.head || document.body || document.documentElement)?.appendChild(
       style,
     );
+
+    // Preserve normal DOM cascade order, including custom CSS with imports.
+    // CSP-blocked style elements have no associated sheet. Only those need the
+    // constructable-sheet fallback; imports remain subject to the page's CSP.
+    if (!style.sheet) {
+      const sheet = injectWithAdoptedStyleSheet(css, id);
+      if (sheet) {
+        style.remove();
+        return sheet;
+      }
+    }
     return style;
   };
 })();

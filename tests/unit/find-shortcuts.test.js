@@ -25,6 +25,12 @@ function createElement(tagName) {
     append(...children) {
       children.forEach((child) => element.appendChild(child));
     },
+    remove() {
+      const siblings = element.parentElement?.children;
+      if (siblings) siblings.splice(siblings.indexOf(element), 1);
+      element.parentElement = null;
+      element.parentNode = null;
+    },
     addEventListener(type, handler) {
       element.listeners = element.listeners || {};
       element.listeners[type] = element.listeners[type] || [];

@@ -8,17 +8,28 @@ const source = fs.readFileSync(
   "utf-8",
 );
 
-function loadStyleHelper({ supportsAdoptedStyleSheets }) {
+function loadStyleHelper({
+  supportsAdoptedStyleSheets,
+  blocksStyleElements = true,
+}) {
   const appendedStyles = [];
   const document = {
     head: {
       appendChild(style) {
         appendedStyles.push(style);
+        style.sheet = blocksStyleElements ? null : {};
         return style;
       },
     },
     createElement(tagName) {
-      return { tagName, id: "", textContent: "" };
+      return {
+        tagName,
+        id: "",
+        textContent: "",
+        remove() {
+          appendedStyles.splice(appendedStyles.indexOf(this), 1);
+        },
+      };
     },
     getElementById() {
       return null;
@@ -45,6 +56,22 @@ function loadStyleHelper({ supportsAdoptedStyleSheets }) {
 }
 
 describe("Pake style injection", () => {
+  it("preserves DOM stylesheet order when inline styles are allowed", () => {
+    const { appendedStyles, context } = loadStyleHelper({
+      supportsAdoptedStyleSheets: true,
+      blocksStyleElements: false,
+    });
+    context.window.__PAKE_INJECT_STYLE__("body { color: red; }");
+    context.window.__PAKE_INJECT_STYLE__(
+      '@import "theme.css"; body { color: blue; }',
+    );
+    expect(context.document.adoptedStyleSheets).toHaveLength(0);
+    expect(appendedStyles.map((style) => style.textContent)).toEqual([
+      "body { color: red; }",
+      '@import "theme.css"; body { color: blue; }',
+    ]);
+  });
+
   it("uses adopted style sheets when the page blocks style elements", () => {
     const { appendedStyles, context } = loadStyleHelper({
       supportsAdoptedStyleSheets: true,
@@ -87,6 +114,30 @@ describe("Pake style injection", () => {
     expect(context.document.adoptedStyleSheets).toHaveLength(0);
     expect(appendedStyles).toHaveLength(1);
     expect(appendedStyles[0].textContent).toContain("@import");
+  });
+
+  it.each([
+    '/* theme */@import "theme.css";',
+    '@IMPORT "theme.css";',
+    '@charset "UTF-8";@import "theme.css";',
+    '@\\69mport "theme.css";',
+  ])("does not silently discard imports under CSP: %s", (css) => {
+    const { appendedStyles, context } = loadStyleHelper({
+      supportsAdoptedStyleSheets: true,
+    });
+    context.window.__PAKE_INJECT_STYLE__(css);
+    expect(context.document.adoptedStyleSheets).toHaveLength(0);
+    expect(appendedStyles[0].textContent).toBe(css);
+  });
+
+  it.each([
+    '/* @import */ body::before { content: "@import"; }',
+    ".\\@import { color: red; }",
+    "@import-theme; body { color: red; }",
+  ])("does not mistake other CSS tokens for import rules: %s", (css) => {
+    const { context } = loadStyleHelper({ supportsAdoptedStyleSheets: true });
+    context.window.__PAKE_INJECT_STYLE__(css);
+    expect(context.document.adoptedStyleSheets).toHaveLength(1);
   });
 
   it("falls back to a style element when adopted style sheets are unavailable", () => {
