@@ -59,6 +59,20 @@ async function fixture() {
 }
 
 describe('build workspace', () => {
+  it.each(['rust-toolchain.toml', 'rust-toolchain'])(
+    'preserves the source toolchain selection in %s',
+    async (file) => {
+      const source = await fixture();
+      const content = file.endsWith('.toml')
+        ? '[toolchain]\nchannel = "1.95.0"\n'
+        : '1.95.0\n';
+      await fs.writeFile(path.join(source, file), content);
+      const root = await createBuildWorkspace(source);
+      directories.push(root);
+      expect(await fs.readFile(path.join(root, file), 'utf8')).toBe(content);
+    },
+  );
+
   it('isolates simultaneous build inputs without copying stale local content or cache', async () => {
     const source = await fixture();
     const roots = await Promise.all([

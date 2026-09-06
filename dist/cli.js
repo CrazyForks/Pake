@@ -448,6 +448,8 @@ async function createBuildWorkspace(sourceDirectory) {
             'package.json',
             'pnpm-lock.yaml',
             'package-lock.json',
+            'rust-toolchain.toml',
+            'rust-toolchain',
         ]) {
             const source = path.join(sourceDirectory, file);
             if (await fsExtra.pathExists(source))

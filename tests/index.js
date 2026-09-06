@@ -1013,6 +1013,7 @@ class PakeTestRunner {
             if (output.includes("Compiling")) compilationStarted = true;
             if (output.includes("Finished"))
               console.log("   [PASS] Multi-arch compilation finished!");
+            process.stderr.write(data);
           });
 
           // Multi-arch builds take longer - 20 minutes timeout
